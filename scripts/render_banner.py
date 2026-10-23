@@ -9,14 +9,13 @@ from functools import lru_cache
 from pathlib import Path
 import math
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 CELL = 16
 WIDTH, HEIGHT = 960, 352
-FRAME_COUNT, DURATION_MS = 160, 80
-ASSET_NAME = "mono-noise-v3"
-PERIOD = 8
+FRAME_COUNT, DURATION_MS = 300, 60
+ASSET_NAME = "mono-flow-v4"
 
 
 def fade(t):
@@ -24,21 +23,21 @@ def fade(t):
 
 
 @lru_cache(maxsize=None)
-def lattice(x, y, z):
-    # Fixed integer hash; time wraps through the same lattice for an exact seam.
-    h = (x * 374761393 + y * 668265263 + (z % PERIOD) * 2147483647) & 0xFFFFFFFF
+def lattice(x, y, z, w):
+    h = (x * 374761393 + y * 668265263 + z * 2147483647 + w * 1274126177) & 0xFFFFFFFF
     h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
     return ((h ^ (h >> 16)) & 0xFFFFFFFF) / 0xFFFFFFFF
 
 
-def noise(x, y, z):
-    ix, iy, iz = math.floor(x), math.floor(y), math.floor(z)
-    fx, fy, fz = fade(x - ix), fade(y - iy), fade(z - iz)
+def noise(x, y, z, w):
+    coords = (x, y, z, w)
+    origins = tuple(math.floor(v) for v in coords)
+    fractions = tuple(fade(v - origin) for v, origin in zip(coords, origins))
     result = 0.0
-    for dx, wx in ((0, 1 - fx), (1, fx)):
-        for dy, wy in ((0, 1 - fy), (1, fy)):
-            for dz, wz in ((0, 1 - fz), (1, fz)):
-                result += lattice(ix + dx, iy + dy, iz + dz) * wx * wy * wz
+    for corner in range(16):
+        offsets = tuple((corner >> axis) & 1 for axis in range(4))
+        weight = math.prod(f if offset else 1 - f for f, offset in zip(fractions, offsets))
+        result += lattice(*(origin + offset for origin, offset in zip(origins, offsets))) * weight
     return result
 
 
@@ -86,26 +85,49 @@ def symbol(index):
     return mask.resize((CELL, CELL), Image.Resampling.LANCZOS)
 
 
+@lru_cache(maxsize=384)
+def transition(index, step):
+    # Cross-fade shapes instead of snapping between discrete noise buckets.
+    return Image.blend(symbol(index), symbol(min(11, index + 1)), step / 24)
+
+
 def frame(phase):
-    image = Image.new("L", (WIDTH, HEIGHT), 12)
-    z = (phase / math.tau * PERIOD) % PERIOD
+    phase %= math.tau
+    mask = Image.new("L", (WIDTH, HEIGHT), 0)
+    # A circular path through four-dimensional noise has no temporal reset or
+    # synchronized zero-velocity time slices. The spatial drift also never stops.
+    z, w = 2.2 + 1.4 * math.cos(phase), 2.2 + 1.4 * math.sin(phase)
+    drift_x, drift_y = 0.65 * math.sin(phase), 0.65 * math.cos(phase)
+    samples = {}
     for row in range(HEIGHT // CELL):
         for col in range(WIDTH // CELL):
-            # Like the wallpaper: evaluate the same field at four cell sizes.
             value = 0.0
             for layer in range(4):
                 span = 2 ** layer
-                x = (math.floor(col / span) + 0.5) * span / 6.5
-                y = (math.floor(row / span) + 0.5) * span / 6.5
-                value += noise(x, y, z) / 4
-            value = max(0.0, min(1.0, (value - 0.5) * 1.85 + 0.5))
-            index = min(11, int(value * 12))
-            if index:
-                light = 210
-                image.paste(light, (col * CELL, row * CELL,
-                                   (col + 1) * CELL, (row + 1) * CELL), symbol(index))
-    # Restrained bloom; the sharp rectangular grid remains visible edge to edge.
-    return Image.blend(image, image.filter(ImageFilter.GaussianBlur(1.2)), 0.06)
+                x = (math.floor(col / span) + 0.5) * span / 6.5 + drift_x
+                y = (math.floor(row / span) + 0.5) * span / 6.5 + drift_y
+                if (x, y) not in samples:
+                    samples[x, y] = noise(x, y, z, w)
+                value += samples[x, y] / 4
+            value = max(0.0, min(1.0, (value - 0.5) * 1.85 + 0.5)) * 11
+            index = min(11, int(value))
+            step = round((value - index) * 24)
+            mask.paste(transition(index, step), (col * CELL, row * CELL))
+    rgba = Image.new("RGBA", mask.size, (210, 210, 210, 0))
+    rgba.putalpha(mask)
+    return rgba
+
+
+def gif_frame(rgba):
+    # GIF has binary alpha: use one neutral ink and a transparent index. This
+    # avoids a black matte or dark antialiasing halo on the profile background.
+    alpha = rgba.getchannel("A")
+    indexed = alpha.point(lambda a: 0 if a < 96 else 1)
+    output = Image.new("P", rgba.size)
+    output.putdata(indexed.get_flattened_data())
+    output.putpalette([0, 0, 0, 210, 210, 210] + [0] * 762)
+    output.info["transparency"] = 0
+    return output
 
 
 def main():
@@ -116,11 +138,10 @@ def main():
         rendered = frame(math.tau * index / FRAME_COUNT)
         if index == 0:
             rendered.save(assets / f"{ASSET_NAME}.png")
-        # Every frame shares the same exact grayscale palette.
-        frames.append(rendered.convert("P"))
+        frames.append(gif_frame(rendered))
     frames[0].save(assets / f"{ASSET_NAME}.gif", save_all=True,
                    append_images=frames[1:], duration=DURATION_MS,
-                   loop=0, optimize=True, disposal=1)
+                   loop=0, optimize=False, disposal=2, transparency=0)
     print(f"Rendered {FRAME_COUNT} frames, {FRAME_COUNT * DURATION_MS / 1000}s loop")
 
 
