@@ -114,9 +114,9 @@ def main():
     for index in range(FRAME_COUNT):
         rgb = frame(TAU * index / FRAME_COUNT)
         if index == 0:
-            rgb.save(assets / "ascii-banner.png")
+            rgb.save(assets / "ascii-ripple-v2.png")
         frames.append(rgb.quantize(palette=palette, dither=Image.Dither.NONE))
-    frames[0].save(assets / "ascii-banner.gif", save_all=True,
+    frames[0].save(assets / "ascii-ripple-v2.gif", save_all=True,
                    append_images=frames[1:], duration=DURATION_MS,
                    loop=0, optimize=True, disposal=1)
     print(f"Rendered {FRAME_COUNT} frames, {FRAME_COUNT * DURATION_MS / 1000}s loop")
