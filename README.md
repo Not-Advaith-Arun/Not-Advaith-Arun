@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-reduced-motion: reduce)" srcset="assets/ascii-ripple-v2.png">
-  <img src="assets/ascii-ripple-v2.gif" alt="Advaith Arun — a full-width multicolor ASCII sculpture with flowing noise and expanding ripples." width="100%">
+  <source media="(prefers-reduced-motion: reduce)" srcset="assets/mono-noise-v3.png">
+  <img src="assets/mono-noise-v3.gif" alt="A seamless black-and-white geometric symbol field driven by layered noise, filling the entire rectangular banner." width="100%">
 </picture>
 
 - **Languages** · TypeScript / JavaScript, Python, Go, Java, C++, Rust, Swift, Kotlin
