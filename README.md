@@ -1,15 +1,13 @@
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="assets/ascii-banner.png">
-  <img src="assets/ascii-banner.gif" alt="Advaith Arun — Full-stack engineer. A flowing ASCII noise sculpture on a dark background." width="100%">
+  <img src="assets/ascii-banner.gif" alt="Advaith Arun — a full-width multicolor ASCII sculpture with flowing noise and expanding ripples." width="100%">
 </picture>
 
-- **Languages** · TypeScript, Python, Go, JavaScript, Java, C++, Rust, Swift, Kotlin
-- **Frontend** · React, SolidJS, Redux, Zustand, MUI, Tailwind CSS, Framer Motion, React Flow
-- **Backend** · Spring Boot, FastAPI, Node.js, Express, gRPC, WebSockets, SSE
-- **Data** · PostgreSQL, MongoDB, SQLite, Redis, Firebase, Convex
-- **Infrastructure** · Kubernetes, Docker, NATS JetStream, Kafka, Vault, Git
-- **AI / NLP** · LLM orchestration, NER, GLiNER, RDF/SPARQL, vector search, FalkorDB, Weaviate, PyTorch
-- **Mobile / Desktop** · iOS, Wear OS, BLE, Tauri
-- **Auth** · RBAC, tenant isolation, Descope
+- **Languages** · TypeScript / JavaScript, Python, Go, Java, C++, Rust, Swift, Kotlin
+- **Web** · React, SolidJS, Redux / Zustand, Tailwind / MUI, React Flow
+- **Backend** · Spring Boot, FastAPI, Node.js / Express, gRPC, WebSockets
+- **Data & Cloud** · PostgreSQL, MongoDB, SQLite, Redis, Firebase, Docker, Kubernetes, NATS / Kafka
+- **AI & NLP** · LLMs, PyTorch, NER / GLiNER, RDF / SPARQL, graph & vector search
+- **Apps** · iOS, Wear OS, BLE, Tauri
 
 [LinkedIn](https://www.linkedin.com/in/not-advaith-arun/) · [Research — Elsevier](https://doi.org/10.1016/j.rineng.2025.106220) · [Research — IEEE](https://doi.org/10.1109/ICCSP64183.2025.11089451)

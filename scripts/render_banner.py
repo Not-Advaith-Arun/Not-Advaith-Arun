@@ -8,11 +8,13 @@ endpoint equals the first frame and is omitted to avoid a pause at the seam.
 from pathlib import Path
 import math
 import os
+import colorsys
+from functools import lru_cache
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
-WIDTH, HEIGHT = 960, 300
+WIDTH, HEIGHT = 960, 360
 FRAME_COUNT, DURATION_MS = 160, 80
 TAU = math.tau
 FONT_PATH = os.environ.get(
@@ -20,6 +22,7 @@ FONT_PATH = os.environ.get(
 )
 
 
+@lru_cache
 def font(size):
     return ImageFont.truetype(FONT_PATH, size)
 
@@ -36,43 +39,61 @@ def field(x, y, phase):
     )
 
 
+RAMP = " .,:;+=xX#%@"
+BACKGROUND = (13, 17, 23)
+
+
+@lru_cache
+def glyph(character):
+    mask = Image.new("L", (8, 12))
+    ImageDraw.Draw(mask).text((0, -2), character, font=font(13), fill=255)
+    return mask
+
+
 def frame(phase):
-    image = Image.new("RGB", (WIDTH, HEIGHT), (13, 17, 23))
+    image = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
+    # An elliptical, breathing noise sculpture occupies the entire panel.
+    for row in range(29):
+        for col in range(119):
+            px, py = 4 + col * 8, 6 + row * 12
+            x, y = (px - 480) / 425, (py - 180) / 145
+            radius, angle = math.hypot(x, y), math.atan2(y, x)
+            noise = field(x * 1.35, y * 1.1, phase)
+            edge = 1.04 + 0.09 * math.sin(3 * angle + phase)
+            envelope = max(0.0, min(1.0, (edge - radius) * 7))
+            # Integer harmonics give circulating bands and expanding ripples
+            # without a reset or a random discontinuity at the GIF seam.
+            spiral = 0.5 + 0.5 * math.sin(radius * 15 - phase * 2 + angle * 2 + noise * 2)
+            ripple = max(0.0, math.cos(radius * 21 - phase * 3 + noise * 0.8)) ** 9
+            density = max(0.0, min(1.0, 0.46 + noise * 0.36 + spiral * 0.18))
+            brightness = envelope * (0.52 + density * 0.46 + spiral * 0.15 + ripple * 0.22)
+            # Cyan, blue, violet, pink and warm coral flow slowly through the field.
+            hue = (0.64 + angle / math.tau * 0.23 + 0.13 * math.sin(x * 2 + phase)
+                   + 0.08 * noise) % 1.0
+            tint = colorsys.hsv_to_rgb(hue, 0.48, 1.0)
+            color = tuple(min(255, int(base + (255 * channel - base) * min(1, brightness)))
+                          for base, channel in zip(BACKGROUND, tint))
+            index = min(len(RAMP) - 1, int(density * (len(RAMP) - 1)))
+            if envelope and index:
+                image.paste(color, (px, py, px + 8, py + 12), glyph(RAMP[index]))
+    # Soft phosphor bloom adds depth while preserving sharp individual glyphs.
+    bloom = image.filter(ImageFilter.GaussianBlur(3))
+    image = Image.blend(image, bloom, 0.09)
     draw = ImageDraw.Draw(image)
-    # A restrained full-width field, swelling into an orbital sculpture at right.
-    ramp = " .,:;+=xX#%@"
-    glyph_font = font(12)
-    for row in range(23):
-        for col in range(116):
-            px, py = 20 + col * 8, 14 + row * 12
-            x, y = (px - 724) / 146, (py - 148) / 112
-            radius = math.hypot(x, y)
-            angle = math.atan2(y, x)
-            boundary = 1.05 + 0.14 * math.sin(3 * angle + phase)
-            envelope = max(0.0, min(1.0, (boundary - radius) * 4))
-            noise = field(x, y, phase)
-            density = max(0.0, min(1.0, 0.49 + noise * 0.48))
-            ring = 0.5 + 0.5 * math.sin(radius * 11 - phase * 2 + noise)
-            intensity = envelope * (0.20 + 0.80 * density) * (0.6 + 0.4 * ring)
-            # Keep the left area quiet around the name.
-            background = 0.022 * (0.5 + 0.5 * noise)
-            brightness = max(background, intensity)
-            index = min(len(ramp) - 1, int(density * (len(ramp) - 1)))
-            if index == 0:
-                continue
-            color = tuple(int(a + (b - a) * brightness) for a, b in
-                          zip((13, 17, 23), (203, 191, 230)))
-            draw.text((px, py), ramp[index], font=glyph_font, fill=color)
-    # Fixed scanlines keep the texture subtle and do not flicker.
-    for y in range(0, HEIGHT, 4):
-        draw.line((0, y, WIDTH, y), fill=(13, 17, 23), width=1)
-    draw.text((40, 48), "ADVAITH ARUN", font=font(30), fill=(235, 237, 243))
-    draw.text((42, 100), "Full-stack engineer", font=font(16), fill=(181, 172, 204))
-    draw.line((42, 145, 84, 145), fill=(159, 143, 190), width=2)
-    draw.text((42, 171), "interfaces / systems / intelligence", font=font(12), fill=(139, 148, 162))
-    draw.text((42, 244), "NOT-ADVAITH-ARUN", font=font(10), fill=(101, 111, 127))
-    draw.line((42, 279, 918, 279), fill=(37, 42, 53))
-    return image
+    name = "ADVAITH ARUN"
+    name_font = font(38)
+    box = draw.textbbox((0, 0), name, font=name_font)
+    width = box[2] - box[0]
+    position = ((WIDTH - width) // 2, (HEIGHT - 44) // 2 - box[1])
+    # Local shadow, rather than a solid label, lets the sculpture remain full-bleed.
+    shadow = Image.new("RGBA", image.size)
+    sd = ImageDraw.Draw(shadow)
+    sd.rounded_rectangle((position[0] - 24, 145, position[0] + width + 24, 212),
+                         radius=26, fill=(13, 17, 23, 222))
+    image = Image.alpha_composite(image.convert("RGBA"), shadow.filter(ImageFilter.GaussianBlur(16)))
+    ImageDraw.Draw(image).text(position, name, font=name_font, fill=(246, 245, 255),
+                               stroke_width=1, stroke_fill=(246, 245, 255))
+    return image.convert("RGB")
 
 
 def main():
@@ -80,11 +101,14 @@ def main():
     assets.mkdir(exist_ok=True)
     # Shared palette avoids color shimmer between frames and keeps the GIF small.
     palette = Image.new("P", (1, 1))
-    colors = [tuple(int(a + (b - a) * i / 239) for a, b in
-                    zip((13, 17, 23), (203, 191, 230))) for i in range(240)]
-    colors += [(235, 237, 243), (181, 172, 204), (159, 143, 190),
-               (139, 148, 162), (101, 111, 127), (37, 42, 53)]
-    colors += [(13, 17, 23)] * (256 - len(colors))
+    colors = [BACKGROUND]
+    # Shared multicolor palette prevents per-frame palette flashes.
+    for hue_index in range(28):
+        tint = colorsys.hsv_to_rgb(0.40 + hue_index * 0.54 / 27, 0.48, 1)
+        for level in range(1, 10):
+            colors.append(tuple(int(base + (255 * channel - base) * level / 9)
+                                for base, channel in zip(BACKGROUND, tint)))
+    colors += [(246, 245, 255), (190, 190, 205), (224, 223, 237)]
     palette.putpalette([component for color in colors for component in color])
     frames = []
     for index in range(FRAME_COUNT):
